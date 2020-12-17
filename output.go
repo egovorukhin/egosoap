@@ -1,10 +1,10 @@
-package soap
+package egosoap
 
 import "encoding/json"
 
 type Output struct {
 	Envelope Response `xml:"Envelope"`
-	Error bool
+	Error    bool
 }
 
 type Response struct {

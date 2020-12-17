@@ -1,4 +1,4 @@
-package soap
+package egosoap
 
 import (
 	"encoding/xml"
@@ -13,6 +13,7 @@ type Soap struct {
 	Output     *Output
 	Attributes Attribute
 	Error      interface{}
+	Server     Server
 }
 
 type Attribute struct {
@@ -69,13 +70,13 @@ func (s *Soap) SetHeader(h interface{}) Soap {
 	return *s
 }
 
-func (s Soap) Connection(srv Server, soapAction string, inBody, outBody interface{}) (*Output, error) {
+func (s Soap) Connection(soapAction string, inBody, outBody interface{}) (*Output, error) {
 
 	s.SoapAction = soapAction
 	s.Input.Envelope.Body = inBody
 	s.Output.Envelope.Body = outBody
 
-	output, err := s.connection(srv)
+	output, err := s.connection()
 	if err != nil {
 		return output, err
 	}
@@ -84,26 +85,38 @@ func (s Soap) Connection(srv Server, soapAction string, inBody, outBody interfac
 }
 
 //Выполняем запрос до url, передаём xml soap иполучаем ответ
-func (soap Soap) connection(srv Server) (*Output, error) {
+func (soap Soap) connection() (*Output, error) {
 
 	soap.Output.Error = false
 
-	req := egorest.NewRequest(egorest.POST, srv.Route).
-		SetHeader(
-			egorest.SetHeader("Content-Type", "text/xml;charset=UTF-8"),
-			egorest.SetHeader("SOAPAction", soap.SoapAction),
-		)
+	var client *egorest.Client
+	var req *egorest.Request
+	var err error
+	srv := soap.Server
+	//Если заполнен Url, то используем его
+	if srv.Url == "" {
+		client = egorest.NewClient(srv.Hostname, srv.Port, srv.Secure).SetTimeout(srv.Timeout)
+	} else {
+		client, err = egorest.NewClientByUri(srv.Url)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if srv.Username != nil || srv.Password != nil {
+		client.SetBasicAuth(*srv.Username, *srv.Password)
+	}
+
+	req = egorest.NewRequest(egorest.POST, srv.Route).SetHeader(
+		egorest.SetHeader("Content-Type", "text/xml;charset=UTF-8"),
+		egorest.SetHeader("SOAPAction", soap.SoapAction),
+	)
 	req.Data = &egorest.Data{
 		ContentType: egorest.XML,
 		Body:        soap.Input.Envelope,
 	}
 
-	client := egorest.NewClient(srv.Hostname, srv.Port, srv.Secure).SetTimeout(srv.Timeout)
-	if srv.Username != nil || srv.Password != nil {
-		client.SetBasicAuth(*srv.Username, *srv.Password)
-	}
-
-	err := client.Execute(req, &soap.Output.Envelope)
+	err = client.Execute(req, &soap.Output.Envelope)
 	//Если появилась ошибка, то нам нужно десериализовать
 	//данные в Fault структуру и передать в качестве ошибки само значение
 	if err != nil {

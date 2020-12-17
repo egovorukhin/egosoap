@@ -1,4 +1,4 @@
-package soap
+package egosoap
 
 import "encoding/xml"
 
